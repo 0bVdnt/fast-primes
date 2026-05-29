@@ -3,15 +3,45 @@ declare i64 @icbrt(i64)
 declare i64 @iroot4(i64)
 declare i64 @phi_eval(i64, i64, ptr, ptr, ptr)
 
-define weak_odr i64 @lehmer_pi(i64 %x, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table) {
+define weak_odr i64 @lehmer_pi(i64 %x, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table, ptr %pi_cache) {
 entry:
   %in_table = icmp ult i64 %x, %table_limit
-  br i1 %in_table, label %cache_hit, label %compute
+  br i1 %in_table, label %cache_hit, label %hash_check
 
 cache_hit:
   %cache.ptr = getelementptr i64, ptr %pi_table, i64 %x
   %cached.val = load i64, ptr %cache.ptr
   ret i64 %cached.val
+
+hash_check:
+  %hash = mul i64 %x, -7046029254386353131
+  ; Fibonacci Hashing, extract Top 24 bits
+  %hash_top = lshr i64 %hash, 40
+  br label %probe_read
+
+probe_read:
+  %idx = phi i64 [ %hash_top, %hash_check ], [ %idx_next_wrapped, %probe_step ]
+  %entry_ptr = getelementptr { i64, i64 }, ptr %pi_cache, i64 %idx
+  %stored_key.ptr = getelementptr { i64, i64 }, ptr %entry_ptr, i32 0, i32 0
+  %stored_key = load i64, ptr %stored_key.ptr
+
+  %is_empty = icmp eq i64 %stored_key, 0
+  br i1 %is_empty, label %compute, label %check_match
+
+check_match:
+  %is_match = icmp eq i64 %stored_key, %x
+  br i1 %is_match, label %hash_hit, label %probe_step
+
+probe_step:
+  %idx_next = add i64 %idx, 1
+  ; Mask with 16777215
+  %idx_next_wrapped = and i64 %idx_next, 16777215
+  br label %probe_read
+
+hash_hit:
+  %stored_val.ptr = getelementptr { i64, i64 }, ptr %entry_ptr, i32 0, i32 1
+  %stored_val = load i64, ptr %stored_val.ptr
+  ret i64 %stored_val
 
 compute:
   %a.input = tail call i64 @iroot4(i64 %x)
@@ -38,13 +68,13 @@ compute:
   %result.init = add i64 %base.phi, %term.div
 
   %loops.done = icmp eq i64 %a, %b
-  br i1 %loops.done, label %return, label %loop_i.header
+  br i1 %loops.done, label %cache_insert, label %loop_i.header
 
 loop_i.header:
   %i = phi i64 [ %a, %compute ], [ %i.next, %loop_i.latch ]
   %result.i = phi i64 [ %result.init, %compute ], [ %result.next, %loop_i.latch ]
   %i.done = icmp uge i64 %i, %b
-  br i1 %i.done, label %return, label %loop_i.body
+  br i1 %i.done, label %cache_insert, label %loop_i.body
 
 loop_i.body:
   %p_i.ptr = getelementptr i64, ptr %primes, i64 %i
@@ -60,7 +90,7 @@ pi_w_fast:
   br label %pi_w_cont
 
 pi_w_slow:
-  %pi_w_slow_val = tail call i64 @lehmer_pi(i64 %w, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table)
+  %pi_w_slow_val = tail call i64 @lehmer_pi(i64 %w, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table, ptr %pi_cache)
   br label %pi_w_cont
 
 pi_w_cont:
@@ -79,6 +109,7 @@ loop_j.setup:
 loop_j.header:
   %j = phi i64 [ %i, %loop_j.setup ], [ %j.next, %loop_j.body ]
   %result.j = phi i64 [ %result.sub1, %loop_j.setup ], [ %result.j.next, %loop_j.body ]
+  
   %j.done = icmp uge i64 %j, %limit_j
   br i1 %j.done, label %loop_i.latch, label %loop_j.body
 
@@ -101,7 +132,11 @@ loop_i.latch:
   %i.next = add i64 %i, 1
   br label %loop_i.header
 
-return:
+cache_insert:
   %final.result = phi i64 [ %result.init, %compute ], [ %result.i, %loop_i.header ]
+  %insert_key.ptr = getelementptr { i64, i64 }, ptr %entry_ptr, i32 0, i32 0
+  store i64 %x, ptr %insert_key.ptr
+  %insert_val.ptr = getelementptr { i64, i64 }, ptr %entry_ptr, i32 0, i32 1
+  store i64 %final.result, ptr %insert_val.ptr
   ret i64 %final.result
 }

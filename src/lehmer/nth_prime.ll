@@ -1,5 +1,5 @@
 declare i64 @isqrt(i64)
-declare i64 @lehmer_pi(i64, ptr, i64, ptr, ptr, ptr)
+declare i64 @lehmer_pi(i64, ptr, i64, ptr, ptr, ptr, ptr)
 declare ptr @mmap(ptr, i64, i64, i64, i64, i64)
 
 define private double @log_fpu(double %x) {
@@ -15,13 +15,16 @@ loop:
   %k = phi i32 [ 1, %entry ], [ %k.next, %latch ]
   %term = phi double [ 1.0, %entry ], [ %term.next, %latch ]
   %sum = phi double [ 1.0, %entry ], [ %sum.next, %latch ]
+  
   %k.f = uitofp i32 %k to double
   %div = fdiv double %k.f, %ln_x
   %term.next = fmul double %term, %div
   %sum.next = fadd double %sum, %term.next
+  
   %is_neg = fcmp olt double %term.next, 0.0
   %neg_term = fsub double 0.0, %term.next
   %abs = select i1 %is_neg, double %neg_term, double %term.next
+  
   %done1 = fcmp olt double %abs, 1.0e-14
   %k.next = add i32 %k, 1
   %done2 = icmp sgt i32 %k.next, 14
@@ -40,6 +43,7 @@ entry:
   %n = uitofp i64 %n_int to double
   %ln_n = call double @log_fpu(double %n)
   %ln_ln_n = call double @log_fpu(double %ln_n)
+  
   %t1 = fadd double %ln_n, %ln_ln_n
   %t2 = fsub double %t1, 1.0
   %t3 = fsub double %ln_ln_n, 2.0
@@ -50,14 +54,17 @@ entry:
 loop:
   %i = phi i32 [ 0, %entry ], [ %i.next, %latch ]
   %x = phi double [ %x.init, %entry ], [ %x.corr, %latch ]
+  
   %li_x = call double @logarithmic_integral(double %x)
   %err = fsub double %li_x, %n
   %ln_x = call double @log_fpu(double %x)
   %corr = fmul double %err, %ln_x
   %x.next = fsub double %x, %corr
+  
   %is_neg = fcmp olt double %corr, 0.0
   %neg_corr = fsub double 0.0, %corr
   %abs = select i1 %is_neg, double %neg_corr, double %corr
+  
   %done = fcmp olt double %abs, 0.5
   br i1 %done, label %exit, label %latch
 latch:
@@ -72,11 +79,10 @@ exit:
   ret i64 %res
 }
 
-define weak_odr i128 @prime(i64 %target_idx, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table) {
+define weak_odr i128 @prime(i64 %target_idx, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table, ptr %pi_cache) {
 entry:
   %n = add i64 %target_idx, 1
 
-  ; For small N, directly look up from the populated primes array
   %is_small = icmp ule i64 %n, 600000
   br i1 %is_small, label %fast_lookup, label %one_shot
 
@@ -88,21 +94,22 @@ fast_lookup:
   ret i128 %p_val_z
 
 one_shot:
-  ; Generate a tight mathematical bound (guaranteed < p_n)
   %li_inv = call i64 @inv_li(i64 %n)
   %sqrt_est = call i64 @isqrt(i64 %li_inv)
-  %margin = mul i64 %sqrt_est, 40
+  
+  %margin = mul i64 %sqrt_est, 25
   %x_guess = sub i64 %li_inv, %margin
+  
+  ; Shift base to x_guess + 1 to prevent double-counting
+  %base = add i64 %x_guess, 1
 
-  ; Evaluate Lehmer Pi
-  %c = call i64 @lehmer_pi(i64 %x_guess, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table)
+  %c = call i64 @lehmer_pi(i64 %x_guess, ptr %pi_table, i64 %table_limit, ptr %primes, ptr %phi_table, ptr %hash_table, ptr %pi_cache)
   %rem_target = sub i64 %n, %c
 
-  ; Allocate a tiny Segmented Sieve to bridge the gap
   %gap_size = mul i64 %margin, 3
   %gap_sieve = call ptr @mmap(ptr null, i64 %gap_size, i64 3, i64 34, i64 -1, i64 0)
   
-  %max_val = add i64 %x_guess, %gap_size
+  %max_val = add i64 %base, %gap_size
   %sqrt_max = call i64 @isqrt(i64 %max_val)
 
   br label %sieve_primes_loop
@@ -118,7 +125,7 @@ sieve_primes_loop:
   br i1 %done, label %scan_gap, label %mark_gap
 
 mark_gap:
-  %rem_div = urem i64 %x_guess, %p_i
+  %rem_div = urem i64 %base, %p_i
   %is_exact = icmp eq i64 %rem_div, 0
   %sub_p = sub i64 %p_i, %rem_div
   %offset = select i1 %is_exact, i64 0, i64 %sub_p
@@ -162,7 +169,7 @@ scan_latch:
   br label %scan_loop
 
 return_ans:
-  %ans = add i64 %x_guess, %k
+  %ans = add i64 %base, %k
   %ans_z = zext i64 %ans to i128
   ret i128 %ans_z
 }

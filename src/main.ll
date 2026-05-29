@@ -1,7 +1,7 @@
 declare ptr @mmap(ptr, i64, i64, i64, i64, i64)
 declare void @init_phi_table(ptr)
 declare i64 @init_sieve_cache(i64, ptr, ptr)
-declare i128 @prime(i64, ptr, i64, ptr, ptr, ptr)
+declare i128 @prime(i64, ptr, i64, ptr, ptr, ptr, ptr)
 declare i64 @write(i64, ptr, i64)
 
 @error.msg = private constant [22 x i8] c"Expected an integer.\0A\00"
@@ -25,15 +25,18 @@ setup_memory:
   %primes = call ptr @mmap(ptr null, i64 80000000, i64 3, i64 34, i64 -1, i64 0)
   %phi_table = call ptr @mmap(ptr null, i64 1681736, i64 3, i64 34, i64 -1, i64 0)
   
-  ; 256MB Phi Cache
-  %hash_table = call ptr @mmap(ptr null, i64 268435456, i64 3, i64 34, i64 -1, i64 0)
+  ; Phi Cache
+  %hash_table = call ptr @mmap(ptr null, i64 1073741824, i64 3, i64 34, i64 -1, i64 0)
+  
+  ; 256 MB Pi Cache
+  %pi_cache = call ptr @mmap(ptr null, i64 268435456, i64 3, i64 34, i64 -1, i64 0)
 
   call void @init_phi_table(ptr %phi_table)
   %cache_limit = add i64 10000000, 0
   call i64 @init_sieve_cache(i64 %cache_limit, ptr %pi_table, ptr %primes)
 
   ; Execute sieve
-  %p_n = call i128 @prime(i64 %target, ptr %pi_table, i64 %cache_limit, ptr %primes, ptr %phi_table, ptr %hash_table)
+  %p_n = call i128 @prime(i64 %target, ptr %pi_table, i64 %cache_limit, ptr %primes, ptr %phi_table, ptr %hash_table, ptr %pi_cache)
 
   call void @write.i128(i128 %p_n)
   ret i64 0

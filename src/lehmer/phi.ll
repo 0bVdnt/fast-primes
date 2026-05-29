@@ -41,14 +41,12 @@ cache_lookup:
   %key = or i64 %x_shl, %a
   %hash = mul i64 %key, -7046029254386353131
   
-  ; Extract the TOP 24 bits of entropy (Fibonacci Hashing)
-  ; 64 total bits - 24 bits needed for 16M table = 40 bit shift
-  %hash_top = lshr i64 %hash, 40
+  ; Fibonacci Hashing, extract Top 26 bits
+  %hash_top = lshr i64 %hash, 38
   br label %probe_read
 
 probe_read:
   %idx = phi i64 [ %hash_top, %cache_lookup ], [ %idx_next_wrapped, %probe_step ]
-  
   %entry_ptr = getelementptr { i64, i64 }, ptr %hash_table, i64 %idx
   %stored_key.ptr = getelementptr { i64, i64 }, ptr %entry_ptr, i32 0, i32 0
   %stored_key = load i64, ptr %stored_key.ptr
@@ -62,8 +60,8 @@ check_match:
 
 probe_step:
   %idx_next = add i64 %idx, 1
-  ; Safely wrap around the 16M boundary
-  %idx_next_wrapped = and i64 %idx_next, 16777215
+  ; Mask with 67108863
+  %idx_next_wrapped = and i64 %idx_next, 67108863
   br label %probe_read
 
 cache_hit:
