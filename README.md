@@ -21,8 +21,50 @@ To achieve extreme sub-linear time complexity, the program avoids counting prime
 
 Unlike traditional block-sieve implementations of Lehmer's algorithm bounded by $O\left(\frac{x}{\log^4 x}\right)$, this software evaluates the partial sieve function $\phi(x, a)$ using an iteratively unrolled sum and **recursive Dynamic Programming with a Hash Table (memoization)**.
 
-* **Time Complexity:** The worst-case bound for the state space of $\phi(x, a)$ is $O\left(\frac{x^{3/4}}{\log x}\right)$. However, the heavy use of memoization via open-addressed hash tables prevents identical sub-states from being recomputed, bringing the practical performance closer to $O(x^{2/3})$ on average for massive inputs.
-* **Space Complexity:** $O\left(\frac{x^{1/2}}{\log x}\right)$, dominated by the gigabytes of hash table cache dynamically allocated via `mmap` to store the $\phi(x,a)$ and $\pi(x)$ recursion branches.
+- **Time Complexity:** The worst-case bound for the state space of $\phi(x, a)$ is $O\left(\frac{x^{3/4}}{\log x}\right)$. However, the heavy use of memoization via open-addressed hash tables prevents identical sub-states from being recomputed, bringing the practical performance closer to $O(x^{2/3})$ on average for massive inputs.
+- **Space Complexity:** $O\left(\frac{x^{1/2}}{\log x}\right)$, dominated by the gigabytes of hash table cache dynamically allocated via `mmap` to store the $\phi(x,a)$ and $\pi(x)$ recursion branches.
+
+---
+
+## Performance & Benchmarks
+
+Because raw execution time is heavily dependent on CPU microarchitecture, clock speed, and L3 cache sizes, the following benchmarks focus on **relative algorithmic throughput** measured in Operations Per Second (Ops/Sec) and relative speedup multipliers.
+
+### 1. Testbed Environment
+
+To provide context for the absolute time metrics, the benchmarks were generated on the following hardware:
+
+- **CPU:** Intel Core i5-12450H
+- **L3 Cache:** 12 MB
+- **OS:** CachyOS Linux x86-64
+- **Compiler:** LLVM `opt` and `llc` version 22.1.5
+
+### 2. Algorithmic Comparison (Maximum $n$ reached in 1.0 Second)
+
+The table below compares the performance of Fast-Primes against several baseline algorithms from `[SheafificationOfG/QueenJewels](https://github.com/SheafificationOfG/QueenJewels)`. The benchmarking harness dynamically searches for the **highest $n$-th prime** each algorithm can successfully compute within a strict 1.0-second timeout.
+
+_(Note: The metrics are derived from the harness in [SheafificationOfG/QueenJewels](https://github.com/SheafificationOfG/QueenJewels), which was adapted to benchmark the algorithms in this project. The repository is attached in the `references/QueenJewels` directory)._
+
+| Algorithm                           | Prime number index ($n$) | Prime number ($P_n$) | Relative Speed |
+| :---------------------------------- | ------------------------ | -------------------- | -------------- |
+| Naïve Iter.                         | `9_405`                  | `97_859`             | `1.0x`         |
+| Sqrt Iter.                          | `266_124`                | `3_740_981`          | `28.3x`        |
+| Miller-Rabin Iter.                  | `337_620`                | `4_833_739`          | `35.8x`        |
+| Sieve of Pritchard                  | `3_898_440`              | `66_041_489`         | `414.5x`       |
+| Sieve of Erat., sqrt                | `7_823_791`              | `138_344_399`        | `831.8x`       |
+| Packed Sieve of Pritch.             | `21_306_021`             | `399_403_699`        | `2265.4x`      |
+| Segm. Sieve of Erat. (byte-aligned) | `27_269_352`             | `518_329_457`        | `2899.5x`      |
+| WF Segm. Sieve of Erat.             | `36_111_874`             | `697_123_187`        | `3839.6x`      |
+| Legendre's Formula                  | `279_151_390`            | `5_991_131_831`      | `29681.1x`     |
+| Lehmer Sieve (fast-primes)          | `23_762_554_725`         | `620_490_072_817`    | `2526587.4x`   |
+
+_(Fast-Primes achieves an ~85.1x performance multiplier directly over Legendre's baseline formula)._
+
+### 3. Performance Scaling Graph
+
+Below is the visualized performance curve.
+
+![Prime Algorithm Performance Comparison](assets/plot.png)
 
 ---
 
@@ -36,13 +78,13 @@ $$x_{k+1} = x_k - (\text{li}(x_k) - n) \ln(x_k)$$
 
 **Algorithmic nuances:**
 
-* Instead of the classical integral definition of $\text{li}(x)$, the program computes the **asymptotic expansion series**:
+- Instead of the classical integral definition of $\text{li}(x)$, the program computes the **asymptotic expansion series**:
 
 $$\text{li}(x) \approx \frac{x}{\ln x} \sum_{k=0}^{14} \frac{k!}{(\ln x)^k}$$
 
-  The series sum loop explicitly terminates when the absolute value of the current term drops below $10^{-14}$, or after exactly 14 terms, whichever comes first.
+The series sum loop explicitly terminates when the absolute value of the current term drops below $10^{-14}$, or after exactly 14 terms, whichever comes first.
 
-* The Newton iteration is capped at a maximum of **8 iterations**, with an early exit if the absolute value of the correction step is $< 0.5$.
+- The Newton iteration is capped at a maximum of **8 iterations**, with an early exit if the absolute value of the correction step is $< 0.5$.
 
 ### 2. Lehmer's Formula (The Exact Count)
 
@@ -56,9 +98,10 @@ $$\pi(x) = \phi(x, a) + \frac{(b+a-2)(b-a+1)}{2} - \sum_{i=a+1}^{b} \pi\left(\fr
 
 > **Implementation Note (0-Based Array Translation):**
 > The program stores primes in a 0-based memory array (`primes[0] = 2`). This means every 1-based mathematical index $k$ corresponds to the 0-based code variable `k - 1`. Concretely:
-> * The outer sum's lower bound $i = a+1$ (1-based) maps to the loop initializer `%i = %a` in the code.
-> * The inner sum's lower bound $j = i$ (1-based) maps to the loop initializer `%j = %i` in the code.
-> * The subtracted term $(j-1)$ in the formula (1-based) maps to the code subtracting `%j` directly (0-based) — these are the same numerical value.
+>
+> - The outer sum's lower bound $i = a+1$ (1-based) maps to the loop initializer `%i = %a` in the code.
+> - The inner sum's lower bound $j = i$ (1-based) maps to the loop initializer `%j = %i` in the code.
+> - The subtracted term $(j-1)$ in the formula (1-based) maps to the code subtracting `%j` directly (0-based) — these are the same numerical value.
 >
 > In both loops, `primes[i]` (0-based) retrieves $p_{i+1}$ in 1-based notation, so the 0-based memory access and 1-based formula are fully consistent.
 
@@ -97,14 +140,11 @@ To guarantee the target prime is captured, the program:
 
 Because this code is written in pure LLVM IR, it employs several low-level optimizations:
 
-* **No `libc` / True Bare-Metal Entry:** The program defines a naked `_start` function (not `main`). It executes inline assembly to manually read `argc` and `argv` directly off the stack pointer `%rsp`. It terminates using a raw `syscall` (number `60` for `sys_exit`), skipping all standard `atexit` handlers entirely.
-* **Knuth Multiplicative Hashing:** Both hash tables (for $\phi$ and for $\pi$) use open addressing with linear probing. The hash function uses Knuth's multiplicative constant `-7046029254386353131` — which is $2^{64} \times (\sqrt{5}-1)/2$ in unsigned two's complement — to scatter keys uniformly across the table.
-* **The `fyl2x` x87 Trick:** To compute the natural logarithm required for the Logarithmic Integral, the program issues the x86 `fyl2x` floating-point instruction with $y = \ln(2) \approx 0.693147$. This computes $y \cdot \log_2(x) = \ln(x)$ in a single hardware step, avoiding the need for a software math library.
-* **128-Bit Return Type:** The master `prime()` function returns an `i128` type. While the current memory allocation bounds the practical computation, the underlying pipeline is intrinsically capable of returning prime values beyond the 64-bit integer limit.
-* **Input Validation:** The program rejects $n \le 0$ before allocating any memory, preventing unsigned integer underflow when converting the 1-based user input to the 0-based internal index. Any non-numeric or zero argument causes an early exit with a descriptive error message to `stderr`.
-
-
-
+- **No `libc` / True Bare-Metal Entry:** The program defines a naked `_start` function (not `main`). It executes inline assembly to manually read `argc` and `argv` directly off the stack pointer `%rsp`. It terminates using a raw `syscall` (number `60` for `sys_exit`), skipping all standard `atexit` handlers entirely.
+- **Knuth Multiplicative Hashing:** Both hash tables (for $\phi$ and for $\pi$) use open addressing with linear probing. The hash function uses Knuth's multiplicative constant `-7046029254386353131` — which is $2^{64} \times (\sqrt{5}-1)/2$ in unsigned two's complement — to scatter keys uniformly across the table.
+- **The `fyl2x` x87 Trick:** To compute the natural logarithm required for the Logarithmic Integral, the program issues the x86 `fyl2x` floating-point instruction with $y = \ln(2) \approx 0.693147$. This computes $y \cdot \log_2(x) = \ln(x)$ in a single hardware step, avoiding the need for a software math library.
+- **128-Bit Return Type:** The master `prime()` function returns an `i128` type. While the current memory allocation bounds the practical computation, the underlying pipeline is intrinsically capable of returning prime values beyond the 64-bit integer limit.
+- **Input Validation:** The program rejects $n \le 0$ before allocating any memory, preventing unsigned integer underflow when converting the 1-based user input to the 0-based internal index. Any non-numeric or zero argument causes an early exit with a descriptive error message to `stderr`.
 
 ---
 
@@ -142,10 +182,10 @@ The result is printed to `stdout` with underscore digit separators (e.g., `22_80
 
 ## References
 
-1. **Lehmer, D. H. (1959).** *On the exact number of primes less than a given limit.* Illinois Journal of Mathematics, 3(3), 381–388. [DOI: 10.1215/ijm/1255455259](https://doi.org/10.1215/ijm/1255455259)
-2. **Lagarias, J. C., Miller, V. S., & Odlyzko, A. M. (1985).** *Computing $\pi(x)$: The Meissel-Lehmer method.* Mathematics of Computation, 44(170), 537–560. [DOI: 10.1090/S0025-5718-1985-0777285-5](https://doi.org/10.1090/S0025-5718-1985-0777285-5)
-3. **Hadamard, J. & de la Vallée Poussin, C. J. (1896).** *The Prime Number Theorem.* [Wikipedia](https://en.wikipedia.org/wiki/Prime_number_theorem)
-4. **Crandall, R., & Pomerance, C. (2005).** *Prime Numbers: A Computational Perspective.* Springer. [DOI: 10.1007/0-387-28979-8](https://doi.org/10.1007/0-387-28979-8)
-5. **Forbes, T. (2002).** *Review: Prime numbers: A computational perspective, by Richard Crandall and Carl Pomerance.* The Mathematical Gazette, 86, 552–554. [DOI: 10.2307/3621190](https://doi.org/10.2307/3621190)
-6. **[Sheafification of G](https://github.com/SheafificationOfG):** Inspiration for this project was drawn from the YouTube video [One second to find the BILLIONth PRIME](https://www.youtube.com/watch?v=uJkoI5TnKzA). The bare-metal x86-64 Linux system call wrappers (`src/sys/amd64_rt.ll`, `src/sys/amd64_sys.ll`) are from the GitHub repository [SheafificationOfG/QueenJewels](https://github.com/SheafificationOfG/QueenJewels).
+1. **Lehmer, D. H. (1959).** _On the exact number of primes less than a given limit._ Illinois Journal of Mathematics, 3(3), 381–388. [DOI: 10.1215/ijm/1255455259](https://doi.org/10.1215/ijm/1255455259)
+2. **Lagarias, J. C., Miller, V. S., & Odlyzko, A. M. (1985).** _Computing $\pi(x)$: The Meissel-Lehmer method._ Mathematics of Computation, 44(170), 537–560. [DOI: 10.1090/S0025-5718-1985-0777285-5](https://doi.org/10.1090/S0025-5718-1985-0777285-5)
+3. **Hadamard, J. & de la Vallée Poussin, C. J. (1896).** _The Prime Number Theorem._ [Wikipedia](https://en.wikipedia.org/wiki/Prime_number_theorem)
+4. **Crandall, R., & Pomerance, C. (2005).** _Prime Numbers: A Computational Perspective._ Springer. [DOI: 10.1007/0-387-28979-8](https://doi.org/10.1007/0-387-28979-8)
+5. **Forbes, T. (2002).** _Review: Prime numbers: A computational perspective, by Richard Crandall and Carl Pomerance._ The Mathematical Gazette, 86, 552–554. [DOI: 10.2307/3621190](https://doi.org/10.2307/3621190)
+6. **[Sheafification of G](https://github.com/SheafificationOfG):** Inspiration for this project was drawn from the YouTube video [One second to find the BILLIONth PRIME](https://www.youtube.com/watch?v=uJkoI5TnKzA). The bare-metal x86-64 Linux system call wrappers (`src/sys/amd64_rt.ll`, `src/sys/amd64_sys.ll`) are from the GitHub repository [SheafificationOfG/QueenJewels](https://github.com/SheafificationOfG/QueenJewels). A reference to the repository is included in the `references/QueenJewels` directory.
 7. **[haskallcurry/primes](https://github.com/haskallcurry/primes):** The implementation of the Meissel-Lehmer algorithm in the haskallcurry/primes repository served as a foundational reference for this experiment.

@@ -1,0 +1,3 @@
+[submodule "references/QueenJewels"]
+	path = references/QueenJewels
+	url = https://github.com/SheafificationOfG/QueenJewels
