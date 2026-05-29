@@ -73,7 +73,7 @@ $$\phi(x, a) = \phi(x, 6) - \sum_{i=6}^{a-1} \phi\!\left(\left\lfloor \frac{x}{p
 > **Implementation Note (0-Based Array Translation):**
 > In the code, the loop variable `i` is 0-based and runs from `6` to `a - 1`. At each step, `primes[i]` (0-based) retrieves $p_{i+1}$ in 1-based notation, and the recursive call passes `i` as the second argument — corresponding to the 1-based index $i$ shown in the formula above. The formula and the code are therefore fully consistent.
 
-To compute the base case $\phi(x, 6)$ in $O(1)$ time, the program uses a **Primorial Modulus Lookup**. Since the primorial $p_6\# = 2 \times 3 \times 5 \times 7 \times 11 \times 13 = 30030$, the coprimality pattern repeats every 30030 integers. The codebase precomputes a 2D table of 7 rows ($a = 0 \ldots 6$) and 30031 columns, holding $\phi(x, a)$ for $x \in [0, 30030]$ (total allocation: $7 \times 30031 \times 8 = 1{,}681{,}736$ bytes). Any base case is then evaluated in $O(1)$ as:
+To compute the base case $\phi(x, 6)$ in $O(1)$ time, the program uses a **Primorial Modulus Lookup**. Since $p_{6}^{\\#} = 2 \times 3 \times 5 \times 7 \times 11 \times 13 = 30030$, the coprimality pattern repeats every 30030 integers. The codebase precomputes a 2D table of 7 rows ($a = 0 \dots 6$) and 30031 columns, holding $\phi(x, a)$ for $x \in [0, 30030]$ (total allocation: $7 \times 30031 \times 8 = 1{,}681{,}736$ bytes). Any base case is then evaluated in $O(1)$ as:
 
 $$\phi(x, 6) = \left\lfloor \frac{x}{30030} \right\rfloor \phi(30030, 6) + \phi(x \bmod 30030, 6)$$
 
