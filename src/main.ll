@@ -4,7 +4,7 @@ declare i64 @init_sieve_cache(i64, ptr, ptr)
 declare i128 @prime(i64, ptr, i64, ptr, ptr, ptr, ptr)
 declare i64 @write(i64, ptr, i64)
 
-@error.msg = private constant [22 x i8] c"Expected an integer.\0A\00"
+@error.msg = private constant [28 x i8] c"Expected an integer N > 0.\0A\00"
 
 define i64 @main(i64 %argc, ptr %argv) {
 entry:
@@ -12,13 +12,21 @@ entry:
   br i1 %has_argc, label %setup_memory, label %error
 
 error:
-  call i64 @write(i64 2, ptr @error.msg, i64 22)
+  call i64 @write(i64 2, ptr @error.msg, i64 27)
   ret i64 1
 
 setup_memory:
   %n.offset = getelementptr ptr, ptr %argv, i64 1
   %n.ptr = load ptr, ptr %n.offset
-  %target = call i64 @parse.i64(ptr %n.ptr)
+  %target.zero.indexed = call i64 @parse.i64(ptr %n.ptr)
+
+  ; reject n <= 0 to prevent Unsigned Integer Underflow
+  %is_valid = icmp ugt i64 %target.zero.indexed, 0
+  br i1 %is_valid, label %allocate, label %error
+
+allocate:
+  ; Safe conversion to 0-indexed engine
+  %target = sub i64 %target.zero.indexed, 1
 
   ; Baseline Arrays
   %pi_table = call ptr @mmap(ptr null, i64 80000000, i64 3, i64 34, i64 -1, i64 0)

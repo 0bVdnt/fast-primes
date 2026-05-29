@@ -4,16 +4,15 @@ LLC ?= llc
 LLD ?= ld.lld
 
 OPTFLAGS = -O3
-ARCH     = x86-64
 
 SRC_DIR   = src
 BUILD_DIR = build
 BIN_DIR   = bin
 
-TARGET    = $(BIN_DIR)/billionprimes
-LINKED_BC = $(BUILD_DIR)/lehmer.bc
-OPT_BC    = $(BUILD_DIR)/lehmer.opt.bc
-OBJ_FILE  = $(BUILD_DIR)/lehmer.o
+TARGET    = $(BIN_DIR)/fast-primes
+LINKED_BC = $(BUILD_DIR)/fast-primes.bc
+OPT_BC    = $(BUILD_DIR)/fast-primes.opt.bc
+OBJ_FILE  = $(BUILD_DIR)/fast-primes.o
 
 SYS_SRCS    = $(wildcard $(SRC_DIR)/sys/*.ll)
 MATH_SRCS   = $(wildcard $(SRC_DIR)/math/*.ll)
@@ -22,9 +21,20 @@ MAIN_SRC    = $(SRC_DIR)/main.ll
 
 ALL_SRCS = $(MAIN_SRC) $(SYS_SRCS) $(MATH_SRCS) $(LEHMER_SRCS)
 
-.PHONY: all clean prep
+# Optional architecture flag
+MARCH_FLAG ?= -march=x86-64
 
-all: prep $(TARGET)
+.PHONY: all native generic clean prep
+
+# Default build
+all: generic
+
+# Build with specified -march (default: x86-64)
+native: prep $(TARGET)
+
+# Build without any -march
+generic: MARCH_FLAG=
+generic: prep $(TARGET)
 
 prep:
 	@mkdir -p $(BUILD_DIR)
@@ -42,8 +52,8 @@ $(OPT_BC): $(LINKED_BC)
 
 # Lower to target-specific machine object
 $(OBJ_FILE): $(OPT_BC)
-	@echo "[LLC]  Lowering to machine object ($(ARCH))."
-	$(LLC) $(OPTFLAGS) -march=$(ARCH) -filetype=obj $< -o $@
+	@echo "[LLC]  Lowering to machine object."
+	$(LLC) $(OPTFLAGS) $(MARCH_FLAG) -filetype=obj $< -o $@
 
 # Link into final executable
 $(TARGET): $(OBJ_FILE)
